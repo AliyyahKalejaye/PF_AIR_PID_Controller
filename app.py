@@ -14,66 +14,71 @@ st.set_page_config(
 # ==============================
 # LOGO (BLACK / WHITE AUTO-SWITCH)
 # ==============================
-logo_col, _ = st.columns([1, 7])
+st.markdown(
+    """
+    <style>
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;               /* natural spacing */
+            margin-bottom: -10px;    /* reduce gap to content */
+        }
 
-with logo_col:
-    st.markdown(
-        """
-        <style>
-            .logo {
-                height: 110px;
-                width: auto;
-                display: none;
-            }
+        .logo {
+            height: 90px;            /* noticeable but professional */
+            width: auto;
+            display: none;
+        }
 
-            /* Light mode → black logo */
-            html:not([data-theme="dark"]) .logo-black {
-                display: block;
-            }
+        /* Light mode */
+        html:not([data-theme="dark"]) .logo-black {
+            display: block;
+        }
 
-            /* Dark mode → white logo */
-            html[data-theme="dark"] .logo-white {
-                display: block;
-            }
+        /* Dark mode */
+        html[data-theme="dark"] .logo-white {
+            display: block;
+        }
 
-            h1 {
-                margin-top: 0.3rem !important;
-            }
-        </style>
+        h1 {
+            margin: 0;
+            padding: 0;
+            line-height: 1.1;
+        }
+    </style>
 
-        <img src="PF_Air_Logo black.png"
-             class="logo logo-black"
-             alt="Logo">
+    <div class="header">
+        <img src="PF_Air_Logo black.png" class="logo logo-black" alt="Logo">
+        <img src="PF_Air_Logo white.png.jpeg" class="logo logo-white" alt="Logo">
+        <h1>PID Controller</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-        <img src="PF_Air_Logo white.png.jpeg"
-             class="logo logo-white"
-             alt="Logo">
-        """,
-        unsafe_allow_html=True
-    )
 
 # ==============================
 # TITLE & DESCRIPTION
 # ==============================
-st.title("PID Controller")
+#st.title("PID Controller")
 
 st.write(
-    "A General-Purpose PID Tuning Dashboard That Adapts To Different Plants."
+    "A General-Purpose PID controller"
 )
 
 # ==============================
-# IMPORT PURE PID CORE
+# IMPORT PID CORE
 # ==============================
 from pid_core import PID
 
 # ==============================
-# SIDEBAR — CONTROLLER CONFIG
+# SIDEBAR — UNIVERSAL CONTROLLER
 # ==============================
 st.sidebar.header("PID Gains")
 
-kp = st.sidebar.slider("Kp (Proportional)", 0.0, 100.0, 10.0, 0.5)
-ki = st.sidebar.slider("Ki (Integral)", 0.0, 10.0, 0.0, 0.05)
-kd = st.sidebar.slider("Kd (Derivative)", 0.0, 20.0, 1.0, 0.1)
+kp = st.sidebar.slider("Kp (Proportional)", 0.0, 500.0, 20.0, 1.0)
+ki = st.sidebar.slider("Ki (Integral)", 0.0, 50.0, 0.0, 0.1)
+kd = st.sidebar.slider("Kd (Derivative)", 0.0, 100.0, 2.0, 0.5)
 
 st.sidebar.divider()
 
@@ -81,24 +86,24 @@ st.sidebar.header("Target & Safety")
 
 setpoint = st.sidebar.slider(
     "Setpoint",
-    min_value=-1000.0,
-    max_value=1000.0,
+    min_value=-180,
+    max_value=180,
     value=0.0,
-    step=1.0
+    step=0.5
 )
 
-output_limit = st.sidebar.slider(
-    "Output Limit (±)",
+motor_output_limit = st.sidebar.slider(
+    "Motor Output Limit (±)",
     0.0,
     100.0,
     50.0,
     1.0
 )
 
-emergency_stop = st.sidebar.toggle("🛑 Emergency Stop")
+emergency_stop = st.sidebar.toggle("🛑 Stop")
 
 # ==============================
-# SESSION STATE INIT
+# SESSION STATE
 # ==============================
 if "pid" not in st.session_state:
     st.session_state.pid = PID(kp, ki, kd)
@@ -126,7 +131,7 @@ dt = 0.02
 t_now = time.time() - st.session_state.start_time
 
 # --------------------------------------------------
-# 🔌 MEASUREMENT SOURCE (REPLACE FOR REAL HARDWARE)
+# 🔌 USER DATA SOURCE (REPLACE FOR REAL SYSTEMS)
 # --------------------------------------------------
 measured_value = (
     st.session_state.history["measurement"][-1]
@@ -142,7 +147,7 @@ if emergency_stop:
     pid.reset()
 else:
     control = pid.update(setpoint, measured_value, dt)
-    control = np.clip(control, -output_limit, output_limit)
+    control = np.clip(control, -motor_output_limit, motor_output_limit)
 
 error = setpoint - measured_value
 
