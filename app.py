@@ -89,8 +89,7 @@ setpoint = st.sidebar.slider(
     min_value=-180,
     max_value=180,
     value=0.0,
-    step=0.5
-    key="setpoint_float"
+    step=1.0
 )
 
 motor_output_limit = st.sidebar.slider(
