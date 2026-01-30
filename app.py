@@ -3,8 +3,10 @@ import asyncio
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+
 from pid_core import PID
-from bluetooth_link import BluetoothLink
+from bluetooth_link import BluetoothLink  # Your async BLE helper
+
 
 # ==============================
 # PAGE CONFIG
@@ -29,27 +31,29 @@ page = st.sidebar.radio(
 # CONTROLLER PAGE
 # ==============================
 if page == "Controller":
-
     st.write("A general-purpose feedback controller for real hardware systems.")
 
     # ------------------------------
-    # HARDWARE CONFIG
+    # HARDWARE CONFIGURATION
     # ------------------------------
     HARDWARE_CONFIG = {
         "Self Balancing Arm": {"units": ["Degrees", "Radians"], "setpoint_deg": (-160, 160)},
         "Direct Current Motor": {"units": ["Revolutions per Minute"], "setpoint_rpm": (0, 6000)},
         "Brushless Motor with ESC": {"units": ["Normalized Output"], "setpoint_norm": (0.0, 1.0)},
         "Single Axis Drone Control": {"units": ["Degrees"], "setpoint_deg": (-45, 45)},
-        "Custom System": {"units": ["Degrees", "Radians", "Normalized Output"], "setpoint_deg": (-180, 180), "setpoint_norm": (-1.0, 1.0)}
+        "Custom System": {"units": ["Degrees", "Radians", "Normalized Output"], 
+                          "setpoint_deg": (-180, 180), 
+                          "setpoint_norm": (-1.0, 1.0)}
     }
 
+    # ------------------------------
+    # SYSTEM & UNIT SELECTION
+    # ------------------------------
     st.sidebar.header("System Configuration")
     hardware_type = st.sidebar.selectbox("Select Hardware Type", list(HARDWARE_CONFIG.keys()))
     unit_type = st.sidebar.selectbox("Measurement Unit", HARDWARE_CONFIG[hardware_type]["units"])
 
-    # ------------------------------
-    # Setpoint range based on unit
-    # ------------------------------
+    # Determine setpoint range dynamically
     if unit_type.lower() == "degrees":
         set_min, set_max = HARDWARE_CONFIG[hardware_type].get("setpoint_deg", (-180, 180))
     elif unit_type.lower() == "radians":
@@ -62,7 +66,7 @@ if page == "Controller":
         set_min, set_max = -100.0, 100.0
 
     # ------------------------------
-    # CONTROLLER GAINS
+    # PID GAINS
     # ------------------------------
     st.sidebar.header("Controller Gains")
     kp = st.sidebar.slider("Proportional Gain", 0.0, 500.0, 20.0, 1.0)
@@ -70,7 +74,7 @@ if page == "Controller":
     kd = st.sidebar.slider("Derivative Gain", 0.0, 200.0, 2.0, 0.5)
 
     # ------------------------------
-    # TARGET AND SAFETY
+    # TARGET & SAFETY
     # ------------------------------
     st.sidebar.header("Target and Safety")
     setpoint = st.sidebar.slider(
@@ -85,7 +89,7 @@ if page == "Controller":
     reset_controller = st.sidebar.button("Reset Controller")
 
     # ------------------------------
-    # BLUETOOTH CONFIG
+    # BLUETOOTH CONNECTION
     # ------------------------------
     st.sidebar.header("Bluetooth Connection")
     bluetooth_address = st.sidebar.text_input("Device Address", value="AA:BB:CC:DD:EE:FF")
@@ -117,7 +121,7 @@ if page == "Controller":
         return asyncio.get_event_loop().run_until_complete(coro)
 
     # ------------------------------
-    # BLUETOOTH CONNECTION WITH AUTO-CHARACTERISTICS
+    # CONNECT TO BLUETOOTH
     # ------------------------------
     if connect_bluetooth and st.session_state.bluetooth is None:
         link = BluetoothLink(bluetooth_address)
@@ -157,11 +161,10 @@ if page == "Controller":
         st.session_state.history["error"].append(error)
 
     # ------------------------------
-    # VISUALIZATION (BIGGER GRAPHS)
+    # VISUALIZATION (BIG GRAPHS)
     # ------------------------------
     col1, col2, col3 = st.columns(3)
-
-    figsize = (8, 4)  # width x height
+    figsize = (9, 5)
 
     with col1:
         st.subheader("System Output")
@@ -197,7 +200,7 @@ if page == "Controller":
     # ------------------------------
     if st.session_state.running:
         time.sleep(dt)
-        st.rerun()
+        st.experimental_rerun()
 
 # ==============================
 # DOCUMENTATION PAGE
