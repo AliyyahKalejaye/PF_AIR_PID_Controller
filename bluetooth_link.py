@@ -1,29 +1,40 @@
-import bluetooth
+import asyncio
+from bleak import BleakClient
 
 class BluetoothLink:
-    def __init__(self, mac_address, port=1):
-        self.mac_address = mac_address
-        self.port = port
-        self.socket = None
+    """
+    Handles Bluetooth Low Energy communication between
+    the computer and the microcontroller.
+    """
 
-    def connect(self):
-        self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-        self.socket.connect((self.mac_address, self.port))
+    def __init__(self, device_address, characteristic_uuid):
+        self.device_address = device_address
+        self.characteristic_uuid = characteristic_uuid
+        self.client = BleakClient(device_address)
 
-    def read_sensor(self):
-        """
-        Receives sensor value from microcontroller
-        Expected format: float value as string
-        """
-        data = self.socket.recv(1024).decode().strip()
-        return float(data)
+    async def connect(self):
+        if not self.client.is_connected:
+            await self.client.connect()
 
-    def send_control(self, value):
-        """
-        Sends control signal back to microcontroller
-        """
-        self.socket.send(f"{value}\n")
+    async def disconnect(self):
+        if self.client.is_connected:
+            await self.client.disconnect()
 
-    def close(self):
-        if self.socket:
-            self.socket.close()
+    async def read_measurement(self):
+        """
+        Reads a sensor value from the microcontroller.
+        Expected format: UTF-8 encoded float string
+        Example: b"12.45"
+        """
+        data = await self.client.read_gatt_char(self.characteristic_uuid)
+        return float(data.decode().strip())
+
+    async def send_control_output(self, value):
+        """
+        Sends the controller output back to the microcontroller.
+        """
+        await self.client.write_gatt_char(
+            self.characteristic_uuid,
+            str(value).encode()
+        )
+
