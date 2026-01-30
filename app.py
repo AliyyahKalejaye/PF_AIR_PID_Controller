@@ -86,10 +86,10 @@ st.sidebar.header("Target & Safety")
 
 setpoint = st.sidebar.slider(
     "Setpoint",
-    min_value=-180,
-    max_value=180,
+    min_value=-180.0,
+    max_value=180.0,
     value=0.0,
-    step=1.0
+    step=0.5
 )
 
 motor_output_limit = st.sidebar.slider(
