@@ -4,148 +4,277 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from pid_core import PID
-from bluetooth_link import BluetoothLink
 
+# ==================================================
+# PAGE CONFIGURATION
+# ==================================================
 st.set_page_config(
     page_title="PROFORCE AIRSYSTEMS PID CONTROLLER",
     layout="wide"
 )
 
-st.image("lPF_Air_Logo black.png", width=180)
+# ==================================================
+# LOGO + TITLE (ROBUST)
+# ==================================================
+st.image("logo.png", width=140)  # black/white logo with transparent background
 st.title("PROFORCE AIRSYSTEMS PID CONTROLLER")
+st.write("A general-purpose proportional, integral, and derivative controller for real hardware systems.")
 
-st.write(
-    "This interface allows real-time tuning of a Proportional, Integral, and Derivative controller."
+# ==================================================
+# PAGE NAVIGATION
+# ==================================================
+page = st.sidebar.radio(
+    "Navigation",
+    ["Controller", "Documentation"]
 )
 
-# =============================
-# HARDWARE CONFIGURATION
-# =============================
-HARDWARE_CONFIG = {
-    "Self Balancing Arm": {
-        "unit": "Degrees",
-        "setpoint": (-90.0, 90.0)
+# ==================================================
+# HARDWARE PROFILES
+# ==================================================
+HARDWARE_PROFILES = {
+    "Self-Balancing Arm": {
+        "units": ["Degrees", "Radians"],
+        "kp": (0.0, 500.0),
+        "ki": (0.0, 50.0),
+        "kd": (0.0, 100.0),
+        "setpoint_deg": (-160.0, 160.0)
     },
-    "Direct Current Motor": {
-        "unit": "Revolutions Per Minute",
-        "setpoint": (0.0, 6000.0)
+    "Motor Speed Control": {
+        "units": ["Normalized"],
+        "kp": (0.0, 50.0),
+        "ki": (0.0, 20.0),
+        "kd": (0.0, 10.0),
+        "setpoint_norm": (-1.0, 1.0)
     },
-    "Brushless Direct Current Motor with Electronic Speed Controller": {
-        "unit": "Normalized Output",
-        "setpoint": (0.0, 1.0)
+    "Position Control System": {
+        "units": ["Degrees"],
+        "kp": (0.0, 300.0),
+        "ki": (0.0, 40.0),
+        "kd": (0.0, 80.0),
+        "setpoint_deg": (-180.0, 180.0)
     },
-    "Single Axis Drone Control": {
-        "unit": "Degrees",
-        "setpoint": (-45.0, 45.0)
-    },
-    "Custom System": {
-        "unit": "User Defined",
-        "setpoint": (-100.0, 100.0)
+    "Custom Hardware": {
+        "units": ["Degrees", "Radians", "Normalized"],
+        "kp": (0.0, 1000.0),
+        "ki": (0.0, 200.0),
+        "kd": (0.0, 300.0),
+        "setpoint_deg": (-180.0, 180.0),
+        "setpoint_norm": (-1.0, 1.0)
     }
 }
 
-# =============================
-# SIDEBAR
-# =============================
-st.sidebar.header("Hardware Selection")
+# ==================================================
+# CONTROLLER PAGE
+# ==================================================
+if page == "Controller":
 
-hardware = st.sidebar.selectbox(
-    "Select Control System",
-    list(HARDWARE_CONFIG.keys())
-)
+    # ------------------------------
+    # SYSTEM CONFIGURATION
+    # ------------------------------
+    st.sidebar.header("System Configuration")
 
-unit = HARDWARE_CONFIG[hardware]["unit"]
-set_min, set_max = HARDWARE_CONFIG[hardware]["setpoint"]
+    hardware_type = st.sidebar.selectbox(
+        "Hardware Type",
+        list(HARDWARE_PROFILES.keys())
+    )
 
-st.sidebar.write(f"Control Unit: **{unit}**")
+    unit_type = st.sidebar.selectbox(
+        "Measurement Unit",
+        HARDWARE_PROFILES[hardware_type]["units"]
+    )
 
-setpoint = st.sidebar.slider(
-    "Desired Target Value",
-    set_min,
-    set_max,
-    (set_min + set_max) / 2
-)
+    # ------------------------------
+    # SETPOINT RANGE LOGIC
+    # ------------------------------
+    if unit_type == "Degrees":
+        set_min, set_max = HARDWARE_PROFILES[hardware_type]["setpoint_deg"]
+        unit_label = "degrees"
+    elif unit_type == "Radians":
+        set_min, set_max = -3.14, 3.14
+        unit_label = "radians"
+    else:
+        set_min, set_max = HARDWARE_PROFILES[hardware_type]["setpoint_norm"]
+        unit_label = "normalized units"
 
-st.sidebar.divider()
-st.sidebar.header("Controller Gains")
+    # ------------------------------
+    # CONTROLLER GAINS (DYNAMIC)
+    # ------------------------------
+    st.sidebar.header("Controller Gains")
 
-kp = st.sidebar.slider("Proportional Gain", 0.0, 500.0, 20.0)
-ki = st.sidebar.slider("Integral Gain", 0.0, 50.0, 0.0)
-kd = st.sidebar.slider("Derivative Gain", 0.0, 100.0, 2.0)
+    kp_min, kp_max = HARDWARE_PROFILES[hardware_type]["kp"]
+    ki_min, ki_max = HARDWARE_PROFILES[hardware_type]["ki"]
+    kd_min, kd_max = HARDWARE_PROFILES[hardware_type]["kd"]
 
-reset = st.sidebar.button("Reset Controller")
+    kp = st.sidebar.slider("Proportional Gain", kp_min, kp_max, kp_min, 1.0)
+    ki = st.sidebar.slider("Integral Gain", ki_min, ki_max, ki_min, 0.1)
+    kd = st.sidebar.slider("Derivative Gain", kd_min, kd_max, kd_min, 0.5)
 
-# =============================
-# BLUETOOTH
-# =============================
-st.sidebar.divider()
-st.sidebar.header("Bluetooth Connection")
+    # ------------------------------
+    # TARGET AND SAFETY
+    # ------------------------------
+    st.sidebar.header("Target and Safety")
 
-bluetooth_address = st.sidebar.text_input(
-    "Microcontroller Bluetooth Address"
-)
+    setpoint = st.sidebar.slider(
+        f"Target Value ({unit_label})",
+        min_value=set_min,
+        max_value=set_max,
+        value=0.0,
+        step=(set_max - set_min) / 500,
+        key="setpoint"
+    )
 
-connect = st.sidebar.button("Connect")
+    motor_output_limit = st.sidebar.slider(
+        "Motor Output Limit",
+        0.0,
+        100.0,
+        50.0,
+        1.0
+    )
 
-if "bluetooth" not in st.session_state and connect:
-    st.session_state.bluetooth = BluetoothLink(bluetooth_address)
-    st.session_state.bluetooth.connect()
+    emergency_stop = st.sidebar.toggle("Emergency Stop")
+    reset_controller = st.sidebar.button("Reset Controller")
 
-# =============================
-# CONTROLLER STATE
-# =============================
-if "pid" not in st.session_state or reset:
-    st.session_state.pid = PID(kp, ki, kd)
-    st.session_state.history = {
-        "time": [],
-        "measurement": [],
-        "control": []
-    }
-    st.session_state.start = time.time()
+    # ------------------------------
+    # SESSION STATE
+    # ------------------------------
+    if "pid" not in st.session_state:
+        st.session_state.pid = PID(kp, ki, kd)
 
-pid = st.session_state.pid
-pid.kp, pid.ki, pid.kd = kp, ki, kd
+    if "history" not in st.session_state or reset_controller:
+        st.session_state.history = {
+            "time": [],
+            "measurement": [],
+            "control": [],
+            "error": []
+        }
+        st.session_state.start_time = time.time()
+        st.session_state.pid.reset()
 
-# =============================
-# REAL TIME LOOP
-# =============================
-dt = 0.02
+    pid = st.session_state.pid
+    pid.kp = kp
+    pid.ki = ki
+    pid.kd = kd
 
-if "bluetooth" in st.session_state:
-    measured = st.session_state.bluetooth.read_sensor()
-    control = pid.update(setpoint, measured, dt)
-    st.session_state.bluetooth.send_control(control)
+    # ------------------------------
+    # CONTROL UPDATE
+    # ------------------------------
+    dt = 0.02
 
-    t = time.time() - st.session_state.start
-    st.session_state.history["time"].append(t)
-    st.session_state.history["measurement"].append(measured)
-    st.session_state.history["control"].append(control)
+    if emergency_stop:
+        control_output = 0.0
+        measurement = (
+            st.session_state.history["measurement"][-1]
+            if st.session_state.history["measurement"]
+            else 0.0
+        )
+    else:
+        measurement = (
+            st.session_state.history["measurement"][-1]
+            if st.session_state.history["measurement"]
+            else 0.0
+        )
 
-# =============================
-# GRAPHS
-# =============================
-col1, col2 = st.columns(2)
+        control_output = pid.update(setpoint, measurement, dt)
+        control_output = np.clip(
+            control_output,
+            -motor_output_limit,
+            motor_output_limit
+        )
 
-with col1:
-    st.subheader("Measured System Response")
-    fig, ax = plt.subplots()
-    ax.plot(st.session_state.history["time"],
-            st.session_state.history["measurement"])
-    ax.axhline(setpoint, linestyle="--")
-    ax.set_xlabel("Time (seconds)")
-    ax.set_ylabel(unit)
-    ax.grid(True)
-    st.pyplot(fig)
+        current_time = time.time() - st.session_state.start_time
+        error = setpoint - measurement
 
-with col2:
-    st.subheader("Control Output")
-    fig, ax = plt.subplots()
-    ax.plot(st.session_state.history["time"],
-            st.session_state.history["control"])
-    ax.set_xlabel("Time (seconds)")
-    ax.grid(True)
-    st.pyplot(fig)
+        st.session_state.history["time"].append(current_time)
+        st.session_state.history["measurement"].append(measurement)
+        st.session_state.history["control"].append(control_output)
+        st.session_state.history["error"].append(error)
 
-time.sleep(dt)
-st.rerun()
+    # ------------------------------
+    # VISUALIZATION
+    # ------------------------------
+    col1, col2 = st.columns(2)
 
+    with col1:
+        st.subheader("System Output")
+
+        fig1, ax1 = plt.subplots()
+        ax1.plot(
+            st.session_state.history["time"],
+            st.session_state.history["measurement"],
+            label="Measured Value"
+        )
+        ax1.axhline(setpoint, linestyle="--", label="Target Value")
+        ax1.set_xlabel("Time (seconds)")
+        ax1.set_ylabel(unit_label)
+        ax1.legend()
+        ax1.grid(True)
+        st.pyplot(fig1)
+
+    with col2:
+        st.subheader("Control Output")
+
+        fig2, ax2 = plt.subplots()
+        ax2.plot(
+            st.session_state.history["time"],
+            st.session_state.history["control"],
+            label="Control Output"
+        )
+        ax2.set_xlabel("Time (seconds)")
+        ax2.set_ylabel("Output Level")
+        ax2.grid(True)
+        st.pyplot(fig2)
+
+# ==================================================
+# DOCUMENTATION PAGE
+# ==================================================
+else:
+    st.header("Controller Documentation")
+
+    st.markdown("""
+### What this controller is
+
+This application implements a proportional, integral, and derivative controller.  
+It continuously compares a measured value from a physical system to a desired target value and computes a corrective output.
+
+### The control equation
+
+**Technical form**
+
+Control Output =  
+(Proportional Gain × Error)  
++ (Integral Gain × Accumulated Error)  
++ (Derivative Gain × Rate of Change of Error)
+
+**Simpler explanation**
+
+- The proportional term reacts to how far the system is from the target right now.
+- The integral term corrects long-term bias that does not go away on its own.
+- The derivative term anticipates future motion and reduces overshoot.
+
+### Hardware and units
+
+Different hardware behaves differently.  
+This is why the controller automatically adjusts gain ranges and setpoint limits based on the selected hardware and measurement unit.
+
+- Rotational systems use degrees or radians.
+- Speed and power systems use normalized units.
+- Custom hardware allows full manual control.
+
+### Reading the graphs
+
+- **System Output** shows what the hardware is actually doing.
+- **Control Output** shows how much effort the controller is applying.
+- A well-tuned system reaches the target smoothly and remains stable.
+
+### Safety
+
+Always begin with:
+- Low motor output limits
+- Emergency stop enabled
+- Gradual increase of gains
+
+### Conclusion
+
+This controller is designed to be reusable across many real-world systems.  
+By adjusting hardware type, units, and limits, it can be safely adapted to new projects without rewriting control logic.
+""")
