@@ -200,7 +200,7 @@ if page == "Controller":
     # ------------------------------
     if st.session_state.running:
         time.sleep(dt)
-        st.experimental_rerun()
+        st.rerun()
 
 # ==============================
 # DOCUMENTATION PAGE
