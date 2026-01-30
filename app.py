@@ -73,7 +73,7 @@ if page == "Controller":
     # TARGET AND SAFETY
     # ==============================
     st.sidebar.header("Target and Safety")
-    setpoint = st.sidebar.slider(f"Target Value ({unit_type})", set_min, set_max, 0.0, step=(set_max - set_min)/500)
+    setpoint = st.sidebar.slider(f"Target Value ({unit_type})", float(set_min), float(set_max), 0.0, step=float((set_max - set_min)/500))
     motor_output_limit = st.sidebar.slider("Motor Output Limit", 0.0, 100.0, 50.0, 1.0)
     emergency_stop = st.sidebar.toggle("Emergency Stop")
     reset_controller = st.sidebar.button("Reset Controller")
