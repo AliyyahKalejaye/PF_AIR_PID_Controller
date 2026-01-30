@@ -163,8 +163,9 @@ if page == "Controller":
     # ------------------------------
     # VISUALIZATION (BIG GRAPHS)
     # ------------------------------
-    # col1, col2, col3 = st.columns(3)
-    # figsize = (9, 5)
+    
+    col1, col2, col3 = st.columns(3)
+    figsize = (9, 5)
 
     output_placeholder = st.empty()
     control_placeholder = st.empty()
