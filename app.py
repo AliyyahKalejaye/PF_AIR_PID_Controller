@@ -16,7 +16,7 @@ st.set_page_config(
 # ==================================================
 # LOGO + TITLE (ROBUST)
 # ==================================================
-st.image("logo.png", width=140)  # black/white logo with transparent background
+st.image("PF_Air_Logo black.png", width=140)  # black/white logo with transparent background
 st.title("PROFORCE AIRSYSTEMS PID CONTROLLER")
 st.write("A general-purpose proportional, integral, and derivative controller for real hardware systems.")
 
