@@ -163,8 +163,12 @@ if page == "Controller":
     # ------------------------------
     # VISUALIZATION (BIG GRAPHS)
     # ------------------------------
-    col1, col2, col3 = st.columns(3)
-    figsize = (9, 5)
+    # col1, col2, col3 = st.columns(3)
+    # figsize = (9, 5)
+
+    output_placeholder = st.empty()
+    control_placeholder = st.empty()
+    error_placeholder = st.empty()
 
     with col1:
         st.subheader("System Output")
@@ -198,9 +202,9 @@ if page == "Controller":
     # ------------------------------
     # AUTO REFRESH
     # ------------------------------
-    if st.session_state.running:
-        time.sleep(dt)
-        st.rerun()
+    # if st.session_state.running:
+    #     time.sleep(dt)
+    #     st.rerun()
 
 # ==============================
 # DOCUMENTATION PAGE
