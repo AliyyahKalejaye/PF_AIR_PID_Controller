@@ -3,12 +3,11 @@ import asyncio
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-
 from pid_core import PID
 from bluetooth_link import BluetoothLink
 
 # ==============================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ==============================
 st.set_page_config(
     page_title="PROFORCE AIRSYSTEMS PID CONTROLLER",
@@ -17,7 +16,6 @@ st.set_page_config(
 
 st.image("PF_Air_Logo black.png", width=180)
 st.title("PROFORCE AIRSYSTEMS PID CONTROLLER")
-st.write("A general-purpose feedback controller for real hardware systems.")
 
 # ==============================
 # PAGE NAVIGATION
@@ -27,14 +25,16 @@ page = st.sidebar.radio(
     ["Controller", "Documentation"]
 )
 
-# ==================================================
+# ==============================
 # CONTROLLER PAGE
-# ==================================================
+# ==============================
 if page == "Controller":
 
-    # ==============================
-    # HARDWARE CONFIGURATION
-    # ==============================
+    st.write("A general-purpose feedback controller for real hardware systems.")
+
+    # ------------------------------
+    # HARDWARE CONFIG
+    # ------------------------------
     HARDWARE_CONFIG = {
         "Self Balancing Arm": {"units": ["Degrees", "Radians"], "setpoint_deg": (-160, 160)},
         "Direct Current Motor": {"units": ["Revolutions per Minute"], "setpoint_rpm": (0, 6000)},
@@ -61,34 +61,39 @@ if page == "Controller":
     else:
         set_min, set_max = -100.0, 100.0
 
-    # ==============================
+    # ------------------------------
     # CONTROLLER GAINS
-    # ==============================
+    # ------------------------------
     st.sidebar.header("Controller Gains")
     kp = st.sidebar.slider("Proportional Gain", 0.0, 500.0, 20.0, 1.0)
     ki = st.sidebar.slider("Integral Gain", 0.0, 100.0, 0.0, 0.1)
     kd = st.sidebar.slider("Derivative Gain", 0.0, 200.0, 2.0, 0.5)
 
-    # ==============================
+    # ------------------------------
     # TARGET AND SAFETY
-    # ==============================
+    # ------------------------------
     st.sidebar.header("Target and Safety")
-    setpoint = st.sidebar.slider(f"Target Value ({unit_type})", float(set_min), float(set_max), 0.0, step=float((set_max - set_min)/500))
+    setpoint = st.sidebar.slider(
+        f"Target Value ({unit_type})",
+        float(set_min),
+        float(set_max),
+        0.0,
+        step=float((set_max - set_min)/500)
+    )
     motor_output_limit = st.sidebar.slider("Motor Output Limit", 0.0, 100.0, 50.0, 1.0)
     emergency_stop = st.sidebar.toggle("Emergency Stop")
     reset_controller = st.sidebar.button("Reset Controller")
 
-    # ==============================
-    # BLUETOOTH CONFIGURATION
-    # ==============================
+    # ------------------------------
+    # BLUETOOTH CONFIG
+    # ------------------------------
     st.sidebar.header("Bluetooth Connection")
     bluetooth_address = st.sidebar.text_input("Device Address", value="AA:BB:CC:DD:EE:FF")
-    characteristic_uuid = st.sidebar.text_input("Characteristic UUID", value="0000ffe1-0000-1000-8000-00805f9b34fb")
     connect_bluetooth = st.sidebar.button("Connect to Hardware")
 
-    # ==============================
+    # ------------------------------
     # SESSION STATE
-    # ==============================
+    # ------------------------------
     if "pid" not in st.session_state:
         st.session_state.pid = PID(kp, ki, kd)
     if "bluetooth" not in st.session_state:
@@ -105,24 +110,27 @@ if page == "Controller":
     pid.ki = ki
     pid.kd = kd
 
-    # ==============================
+    # ------------------------------
     # ASYNC HELPER
-    # ==============================
+    # ------------------------------
     def run_async(coro):
         return asyncio.get_event_loop().run_until_complete(coro)
 
-    # ==============================
-    # BLUETOOTH CONNECTION
-    # ==============================
+    # ------------------------------
+    # BLUETOOTH CONNECTION WITH AUTO-CHARACTERISTICS
+    # ------------------------------
     if connect_bluetooth and st.session_state.bluetooth is None:
-        link = BluetoothLink(bluetooth_address, characteristic_uuid)
+        link = BluetoothLink(bluetooth_address)
         run_async(link.connect())
+        characteristics = run_async(link.list_characteristics())
+        char_option = st.sidebar.selectbox("Select Characteristic", characteristics)
         st.session_state.bluetooth = link
+        st.session_state.char_uuid = char_option
         st.success("Bluetooth connected successfully.")
 
-    # ==============================
+    # ------------------------------
     # REAL-TIME CONTROL LOOP
-    # ==============================
+    # ------------------------------
     dt = 0.02
     current_time = time.time() - st.session_state.start_time
 
@@ -136,11 +144,11 @@ if page == "Controller":
         st.session_state.running = True
         measurement = 0.0
         if st.session_state.bluetooth:
-            measurement = run_async(st.session_state.bluetooth.read_measurement())
+            measurement = run_async(st.session_state.bluetooth.read_measurement(st.session_state.char_uuid))
         control_output = pid.update(setpoint, measurement, dt)
         control_output = np.clip(control_output, -motor_output_limit, motor_output_limit)
         if st.session_state.bluetooth:
-            run_async(st.session_state.bluetooth.send_control_output(control_output))
+            run_async(st.session_state.bluetooth.send_control_output(st.session_state.char_uuid, control_output))
         error = setpoint - measurement
 
         st.session_state.history["time"].append(current_time)
@@ -148,13 +156,16 @@ if page == "Controller":
         st.session_state.history["control"].append(control_output)
         st.session_state.history["error"].append(error)
 
-    # ==============================
-    # VISUALIZATION
-    # ==============================
+    # ------------------------------
+    # VISUALIZATION (BIGGER GRAPHS)
+    # ------------------------------
     col1, col2, col3 = st.columns(3)
+
+    figsize = (8, 4)  # width x height
+
     with col1:
         st.subheader("System Output")
-        fig1, ax1 = plt.subplots()
+        fig1, ax1 = plt.subplots(figsize=figsize)
         ax1.plot(st.session_state.history["time"], st.session_state.history["measurement"], label="Measured Value")
         ax1.axhline(setpoint, linestyle="--", label="Target")
         ax1.set_xlabel("Time (s)")
@@ -165,7 +176,7 @@ if page == "Controller":
 
     with col2:
         st.subheader("Control Output")
-        fig2, ax2 = plt.subplots()
+        fig2, ax2 = plt.subplots(figsize=figsize)
         ax2.plot(st.session_state.history["time"], st.session_state.history["control"], label="Controller Output")
         ax2.set_xlabel("Time (s)")
         ax2.set_ylabel("Output Level")
@@ -174,33 +185,31 @@ if page == "Controller":
 
     with col3:
         st.subheader("Error")
-        fig3, ax3 = plt.subplots()
+        fig3, ax3 = plt.subplots(figsize=figsize)
         ax3.plot(st.session_state.history["time"], st.session_state.history["error"], label="Error")
         ax3.set_xlabel("Time (s)")
         ax3.set_ylabel("Error")
         ax3.grid(True)
         st.pyplot(fig3)
 
-    # ==============================
+    # ------------------------------
     # AUTO REFRESH
-    # ==============================
+    # ------------------------------
     if st.session_state.running:
         time.sleep(dt)
         st.rerun()
 
-# ==================================================
+# ==============================
 # DOCUMENTATION PAGE
-# ==================================================
+# ==============================
 else:
     st.header("Documentation")
     st.markdown("""
 ## Introduction
 
-This documentation explains how the Proportional, Integral, and Derivative controller works, 
-how it is used with real hardware, and how to interpret the graphs shown in the controller interface.
+This documentation explains how the Proportional, Integral, and Derivative controller works, how it is used with real hardware, and how to interpret the graphs shown in the controller interface.
 
-The goal is not only to explain the mathematics, but also to explain how to use the controller
-in practical engineering systems.
+The goal is not only to explain the mathematics, but also to explain how to use the controller in practical engineering systems.
 
 ---
 
@@ -258,6 +267,7 @@ Too much integral gain can cause slow response or instability.
 
 The derivative term looks at how fast the error is changing.
 It slows the system down as it approaches the target.
+
 This reduces overshoot and improves stability.
 
 ---
@@ -318,4 +328,3 @@ Understanding both the mathematics and the physical behavior of the system is es
 
 With careful tuning and correct sensor feedback, this controller provides stable and precise control over real-world systems.
 """)
-# call your doc.py function
