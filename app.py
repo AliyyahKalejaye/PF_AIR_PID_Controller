@@ -1,4 +1,3 @@
-
 import time
 import asyncio
 import streamlit as st
@@ -6,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from pid_core import PID
-from doc import show_documentation  # Import your doc.py page
+from bluetooth_link import BluetoothLink
 
 # ==============================
 # PAGE CONFIGURATION
@@ -37,38 +36,35 @@ if page == "Controller":
     # HARDWARE CONFIGURATION
     # ==============================
     HARDWARE_CONFIG = {
-        "Self Balancing Arm": {"unit": "Degrees", "setpoint": (-90.0, 90.0)},
-        "Direct Current Motor": {"unit": "Revolutions Per Minute", "setpoint": (0.0, 6000.0)},
-        "Brushless Motor with ESC": {"unit": "Normalized Output", "setpoint": (0.0, 1.0)},
-        "Single Axis Drone Control": {"unit": "Degrees", "setpoint": (-45.0, 45.0)},
-        "Custom System": {"unit": "User Defined", "setpoint": (-100.0, 100.0)}
+        "Self Balancing Arm": {"units": ["Degrees", "Radians"], "setpoint_deg": (-160, 160)},
+        "Direct Current Motor": {"units": ["Revolutions per Minute"], "setpoint_rpm": (0, 6000)},
+        "Brushless Motor with ESC": {"units": ["Normalized Output"], "setpoint_norm": (0.0, 1.0)},
+        "Single Axis Drone Control": {"units": ["Degrees"], "setpoint_deg": (-45, 45)},
+        "Custom System": {"units": ["Degrees", "Radians", "Normalized Output"], "setpoint_deg": (-180, 180), "setpoint_norm": (-1.0, 1.0)}
     }
 
     st.sidebar.header("System Configuration")
+    hardware_type = st.sidebar.selectbox("Select Hardware Type", list(HARDWARE_CONFIG.keys()))
+    unit_type = st.sidebar.selectbox("Measurement Unit", HARDWARE_CONFIG[hardware_type]["units"])
 
-    hardware_type = st.sidebar.selectbox(
-        "Select Hardware Type",
-        list(HARDWARE_CONFIG.keys())
-    )
-
-    unit_type = st.sidebar.selectbox(
-        "Measurement Unit",
-        ["Degrees", "Radians"]
-    )
-
-    # Adjust setpoint range dynamically
-    if unit_type == "Degrees":
-        setpoint_min, setpoint_max = -180.0, 180.0
-    elif unit_type == "Radians":
-        setpoint_min, setpoint_max = -3.14, 3.14
+    # ------------------------------
+    # Setpoint range based on unit
+    # ------------------------------
+    if unit_type.lower() == "degrees":
+        set_min, set_max = HARDWARE_CONFIG[hardware_type].get("setpoint_deg", (-180, 180))
+    elif unit_type.lower() == "radians":
+        set_min, set_max = -3.14, 3.14
+    elif unit_type.lower() == "normalized output":
+        set_min, set_max = HARDWARE_CONFIG[hardware_type].get("setpoint_norm", (0.0, 1.0))
+    elif unit_type.lower() == "revolutions per minute":
+        set_min, set_max = HARDWARE_CONFIG[hardware_type].get("setpoint_rpm", (0, 6000))
     else:
-        setpoint_min, setpoint_max = HARDWARE_CONFIG[hardware_type]["setpoint"]
+        set_min, set_max = -100.0, 100.0
 
     # ==============================
     # CONTROLLER GAINS
     # ==============================
     st.sidebar.header("Controller Gains")
-    # You can expand this to dynamic ranges per hardware/unit
     kp = st.sidebar.slider("Proportional Gain", 0.0, 500.0, 20.0, 1.0)
     ki = st.sidebar.slider("Integral Gain", 0.0, 100.0, 0.0, 0.1)
     kd = st.sidebar.slider("Derivative Gain", 0.0, 200.0, 2.0, 0.5)
@@ -77,28 +73,13 @@ if page == "Controller":
     # TARGET AND SAFETY
     # ==============================
     st.sidebar.header("Target and Safety")
-    setpoint = st.sidebar.slider(
-        f"Target Value ({unit_type})",
-        min_value=setpoint_min,
-        max_value=setpoint_max,
-        value=0.0,
-        step=0.5,
-        key="setpoint_value"
-    )
-
-    motor_output_limit = st.sidebar.slider(
-        "Motor Output Limit",
-        0.0,
-        100.0,
-        50.0,
-        1.0
-    )
-
+    setpoint = st.sidebar.slider(f"Target Value ({unit_type})", set_min, set_max, 0.0, step=(set_max - set_min)/500)
+    motor_output_limit = st.sidebar.slider("Motor Output Limit", 0.0, 100.0, 50.0, 1.0)
     emergency_stop = st.sidebar.toggle("Emergency Stop")
     reset_controller = st.sidebar.button("Reset Controller")
 
     # ==============================
-    # BLUETOOTH SETUP
+    # BLUETOOTH CONFIGURATION
     # ==============================
     st.sidebar.header("Bluetooth Connection")
     bluetooth_address = st.sidebar.text_input("Device Address", value="AA:BB:CC:DD:EE:FF")
@@ -110,20 +91,12 @@ if page == "Controller":
     # ==============================
     if "pid" not in st.session_state:
         st.session_state.pid = PID(kp, ki, kd)
-
     if "bluetooth" not in st.session_state:
         st.session_state.bluetooth = None
-
     if "running" not in st.session_state:
         st.session_state.running = True
-
     if "history" not in st.session_state or reset_controller:
-        st.session_state.history = {
-            "time": [],
-            "measurement": [],
-            "control": [],
-            "error": []
-        }
+        st.session_state.history = {"time": [], "measurement": [], "control": [], "error": []}
         st.session_state.start_time = time.time()
         st.session_state.pid.reset()
 
@@ -161,21 +134,15 @@ if page == "Controller":
         error = setpoint - measurement
     else:
         st.session_state.running = True
-
+        measurement = 0.0
         if st.session_state.bluetooth:
             measurement = run_async(st.session_state.bluetooth.read_measurement())
-        else:
-            measurement = 0.0  # simulation fallback
-
         control_output = pid.update(setpoint, measurement, dt)
         control_output = np.clip(control_output, -motor_output_limit, motor_output_limit)
-
         if st.session_state.bluetooth:
             run_async(st.session_state.bluetooth.send_control_output(control_output))
-
         error = setpoint - measurement
 
-        # store data
         st.session_state.history["time"].append(current_time)
         st.session_state.history["measurement"].append(measurement)
         st.session_state.history["control"].append(control_output)
@@ -185,7 +152,6 @@ if page == "Controller":
     # VISUALIZATION
     # ==============================
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.subheader("System Output")
         fig1, ax1 = plt.subplots()
@@ -226,4 +192,130 @@ if page == "Controller":
 # DOCUMENTATION PAGE
 # ==================================================
 else:
-    show_documentation()  # call your doc.py function
+    st.header("Documentation")
+    st.markdown("""
+## Introduction
+
+This documentation explains how the Proportional, Integral, and Derivative controller works, 
+how it is used with real hardware, and how to interpret the graphs shown in the controller interface.
+
+The goal is not only to explain the mathematics, but also to explain how to use the controller
+in practical engineering systems.
+
+---
+
+## What a Proportional, Integral, and Derivative Controller Is
+
+A Proportional, Integral, and Derivative controller is a feedback control system.
+It continuously adjusts the output to make the system reach and hold a desired value.
+
+It works by comparing:
+- the value you want the system to reach (the setpoint)
+- the value measured by a sensor
+
+The difference between these two values is called the error.
+
+---
+
+## The Control Equation
+
+### Full Mathematical Form
+
+**u(t) = Kp·e(t) + Ki∫e(t)dt + Kd·de(t)/dt**
+
+Output =  
+(Proportional Gain × Error) + (Integral Gain × Sum of Error Over Time) + (Derivative Gain × Rate of Change of Error)
+
+### Simplified Explanation
+
+The controller:
+- reacts to how far the system is from the target
+- remembers how long it has been off target
+- predicts where the system is heading next
+
+All three actions are combined into one control signal.
+
+---
+
+## Explanation of Each Term
+
+### Proportional Term
+
+The proportional term reacts to the current error.
+If the error is large, the output is large.
+If the error is small, the output is small.
+
+This makes the system respond quickly, but too much proportional gain can cause oscillation.
+
+### Integral Term
+
+The integral term looks at error over time.
+If the system stays slightly away from the target for a long time, the integral term increases the output until the error disappears.
+
+Too much integral gain can cause slow response or instability.
+
+### Derivative Term
+
+The derivative term looks at how fast the error is changing.
+It slows the system down as it approaches the target.
+This reduces overshoot and improves stability.
+
+---
+
+## Hardware Types, Units, and Setpoints
+
+### Self-Balancing Arm
+
+- Unit: Degrees
+- Typical Setpoint Range: -90 to +90 degrees
+
+The controller keeps the arm at a desired angle using feedback from an angle sensor.
+
+### Direct Current Motor
+
+- Unit: Revolutions per Minute
+- Typical Setpoint Range: 0 to maximum rated speed
+
+The controller regulates motor speed using an encoder or a Hall effect sensor.
+
+### Brushless Direct Current Motor with Electronic Speed Controller
+
+- Unit: Normalized Output (0 to 1)
+
+The controller outputs a normalized value that the electronic speed controller converts
+into motor power.
+
+### Single Axis Drone Control
+
+- Unit: Degrees
+- Typical Setpoint Range: -45 to +45 degrees
+
+The controller stabilizes pitch, roll, or yaw using inertial measurement sensors.
+
+---
+
+## Understanding the Graphs
+
+The measured system response graph shows what the system is actually doing.
+
+The horizontal line represents the desired target value.
+
+The control output graph shows how hard the controller is driving the system.
+
+A good controller setup:
+- reaches the target smoothly
+- has minimal overshoot
+- settles quickly without oscillation
+
+---
+
+## Conclusion
+
+This system is designed to be hardware independent, flexible, and safe.
+The same controller logic can be used across motors, robotic arms, and aerial systems.
+
+Understanding both the mathematics and the physical behavior of the system is essential for effective control tuning.
+
+With careful tuning and correct sensor feedback, this controller provides stable and precise control over real-world systems.
+""")
+# call your doc.py function
